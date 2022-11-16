@@ -36,7 +36,7 @@ const inputs = {
     scriptFile: "",
   },
   scriptChoice: ["New Script", "Existing Script"],
-  accountChoice: ["Trika", "Cornerup"],
+  accountChoice: ["Trika"],
   responseChoice: ["GET", "POST", "PUT"],
   resParameterChoice: [],
   downloadChoice: ["CSV", "JSON"],
@@ -180,7 +180,7 @@ function autoScriptConfirm() {
       if (answers.autoScriptConfirm) {
         console.log(
           "\n",
-          chalk.bgBlue("***************AUTO SCRIPT RUNNING****************")
+          chalk.bgBlue("*************** AUTO SCRIPT RUNNING ****************")
         );
         feedIdResult();
       }
@@ -304,7 +304,6 @@ async function getAPiData(account) {
 
   let temp = [];
   const paginationItems = [];
-  let apiData = "";
 
   for (let i = 1; i <= inputs.feedFileData.length; i++) {
     temp.push(inputs.feedFileData[i - 1]);
@@ -317,52 +316,87 @@ async function getAPiData(account) {
     }
   }
 
-  async function getItemDetails(feedId) {
-    const res = await axios.get(`${apiLink}/${feedId}`, {
-      headers,
-    });
-    apiData = res.data;
-    return res.data;
+  async function apiGetCall(feedId) {
+    return axios
+      .get(`${apiLink}/${feedId}`, {
+        headers,
+      })
+      .then((res) => {
+        responceFeedback(feedId, res.data);
+      })
+      .catch((e) => {
+        throw e.status;
+      });
+  }
+
+  async function apiPostCall(feed, feedId) {
+    return axios
+      .post(`${apiLink}/${feedId}`, { ...feed }, { headers })
+      .then((res) => {
+        responceFeedback(feedId, res.data);
+      })
+      .catch((e) => {
+        throw e.status;
+      });
+  }
+
+  async function apiPutCall(feed, feedId) {
+    return await axios
+      .put(`${apiLink}/${feedId}`, { ...feed }, { headers })
+      .then((res) => {
+        responceFeedback(feedId, res.data);
+      })
+      .catch((e) => {
+        throw e.status;
+      });
+  }
+
+  function responceFeedback(feedId, feedBack) {
+    inputs.savedGetObjectsData.push(feedBack);
+    inputs.savedIdsData.push(feedId);
+    remainingData =
+      inputs.feedFileData.length - inputs.savedGetObjectsData.length;
+    dataStatus = `Received ${inputs.userInputs.SelectedResponseParameter} : ${inputs.savedGetObjectsData.length} / Total ${inputs.userInputs.SelectedResponseParameter} : ${inputs.feedFileData.length}, Remaining : ${remainingData}`;
+    logUpdate("\n", chalk.green(dataStatus));
+    if (remainingData === 0) {
+      if (autoScript) {
+        inputs.userInputs.ReceivedOutputStatus = dataStatus;
+        console.log(dataStatus);
+        displayResult();
+      } else {
+        dispalyResultConfirm();
+      }
+    }
   }
 
   let i = 0;
   let remainingData;
-  let dataStatus;
+  let dataStatus = "";
+  let responseInput = inputs.userInputs.SelectedResponseType;
   console.log(chalk.bgBlue("\n", "Data Progress"));
+
   for (const items of paginationItems) {
-    const allCalls = items.map((feedId) => {
-      if (!inputs.savedIdsData.includes(feedId)) {
-        return getItemDetails(feedId)
-          .then(() => {
-            inputs.savedGetObjectsData.push(apiData);
-            inputs.savedIdsData.push(feedId);
-            remainingData =
-              inputs.feedFileData.length - inputs.savedGetObjectsData.length;
-            dataStatus = `Received ${inputs.userInputs.SelectedResponseParameter} : ${inputs.savedGetObjectsData.length} / Total ${inputs.userInputs.SelectedResponseParameter} : ${inputs.feedFileData.length}, Remaining : ${remainingData}`;
-            logUpdate("\n", chalk.green(dataStatus));
-          })
-          .catch((e) => {
-            chalk.bgRed(
-              inputs.userInputs.SelectedResponseParameter,
-              feedId,
-              " :",
-              e.response
-            );
-          });
+    const allCalls = items.map((feed) => {
+      let feedId = feed.Id;
+      if (!inputs.savedIdsData.includes(feed)) {
+        if (responseInput === "GET") {
+          apiGetCall(feed);
+        }
+        if (responseInput === "POST") {
+          delete feed.Id;
+          apiPostCall(feed, feedId);
+        }
+        if (responseInput === "PUT") {
+          delete feed.Id;
+          apiPutCall(feed, feedId);
+        }
       }
     });
     await Promise.allSettled(allCalls);
     i++;
   }
-  inputs.userInputs.ReceivedOutputStatus = dataStatus;
   if (remainingData > 0) {
     resumeApidata();
-  } else {
-    if (autoScript) {
-      displayResult();
-    } else {
-      dispalyResultConfirm();
-    }
   }
 }
 
